@@ -125,7 +125,7 @@ VITE_ERP_API_KEY=your_api_key_here
 VITE_ERP_API_SECRET=your_api_secret_here
 ```
 
-> ⚠️ **Never commit your `.env` file to GitHub!** It's already in `.gitignore`.
+> 
 
 ### 🎬 Run Development Server
 
@@ -449,7 +449,6 @@ Contributions, issues, and feature requests are welcome!
 
 <div align="center">
 
-**⭐ If you find this project useful, please give it a star! ⭐**
 
 **Built with ❤️ for Learn School**
 
