@@ -27,7 +27,8 @@ import {
   School,
   Timer,
   Activity,
-} from 'lucide-react';     // ← Sirf 'Activity' naya add kiya
+  IdCard,          // ← NAYA icon import
+} from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -56,6 +57,13 @@ function getNavItems(role: UserRole): NavItem[] {
     { name: 'Report Card',  path: '/report-card',  icon: ClipboardList   },
     { name: 'Fees',         path: '/fees',         icon: Wallet,         allowedRoles: ['guardian'] },
     { name: 'Notice Board', path: '/notice-board', icon: Newspaper       },
+
+    // ✅ NAYA: Student Card Request (dono roles ke liye)
+    {
+      name: role === 'guardian' ? "Child's Student Card" : 'Student Card',
+      path: '/student-card-request',
+      icon: IdCard,
+    },
 
     // ── NAYA: Screen Time ─────────────────────────────────────────
     {
@@ -790,4 +798,4 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       </main>
     </div>
   );
-}; 
+};

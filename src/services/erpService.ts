@@ -200,6 +200,19 @@ export interface GuardianFullDetail {
   relation?: string; // Student.guardians child table se merge hoga
 }
 
+// ✅ ID Card Request type (status field included)
+export interface StudentCardRequestDoc {
+  name: string;
+  studentid: string;
+  student_name?: string;
+  photo?: string;
+  remarks_by_office?: string;
+  status?: 'Pending' | 'Approved' | 'Rejected';    // ✅ NAYA
+  creation?: string;
+  modified?: string;
+  [key: string]: any;
+}
+
 declare const frappe: { csrf_token: string } | undefined;
 
 export type TemplateType = "KG" | "PRIMARY" | "MIDDLE";
@@ -1688,6 +1701,82 @@ export const erpService = {
           "Failed to fetch guardian details",
       };
     }
+  },
+
+  // ✅ ID Card Request — Get latest (koi bhi status)
+  getActiveStudentCardRequest: async (
+    studentId: string
+  ): Promise<StudentCardRequestDoc | null> => {
+    try {
+      const res: any = await resourceClient.get('ID Card Request', {
+        params: {
+          filters: JSON.stringify([['studentid', '=', studentId]]),
+          fields: JSON.stringify(['*']),
+          limit_page_length: 1,
+          order_by: 'creation desc',
+        },
+      });
+      return res?.data?.[0] || null;
+    } catch (err) {
+      console.error('[getActiveStudentCardRequest] error:', err);
+      return null;
+    }
+  },
+
+  // ✅ ID Card Request — Sirf approved wali (purani bhi chalegi)
+  getApprovedStudentCardRequest: async (
+    studentId: string
+  ): Promise<StudentCardRequestDoc | null> => {
+    try {
+      const res: any = await resourceClient.get('ID Card Request', {
+        params: {
+          filters: JSON.stringify([
+            ['studentid', '=', studentId],
+            ['status', '=', 'Approved'],
+          ]),
+          fields: JSON.stringify(['*']),
+          limit_page_length: 1,
+          order_by: 'creation desc',      // Latest approved
+        },
+      });
+      return res?.data?.[0] || null;
+    } catch (err) {
+      console.error('[getApprovedStudentCardRequest] error:', err);
+      return null;
+    }
+  },
+
+  // ✅ ID Card Request — Create new (status = Pending)
+  createStudentCardRequest: async (
+    studentId: string,
+    studentName: string,
+    photoFile: File
+  ): Promise<StudentCardRequestDoc> => {
+    await fetchAndCacheCsrfToken();
+    const csrf = readCsrfToken();
+
+    const fd = new FormData();
+    fd.append('file', photoFile, photoFile.name);
+    fd.append('is_private', '0');
+
+    const uploadRes: any = await apiClient.post('upload_file', fd, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'X-Frappe-CSRF-Token': csrf || '',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    });
+
+    const fileUrl = uploadRes?.message?.file_url || uploadRes?.file_url;
+    if (!fileUrl) throw new Error('Photo upload failed — file_url missing');
+
+    const docRes: any = await resourceClient.post('ID Card Request', {
+      studentid: studentId,
+      photo: fileUrl,
+      status: 'Pending',              
+    });
+
+    return docRes?.data as StudentCardRequestDoc;
   },
 };
 

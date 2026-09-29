@@ -15,7 +15,9 @@ import {
   Droplet, School, CheckCircle2, XCircle,
   TrendingUp, Loader2, AlertCircle, Shield,
   Camera, X, Eye, CreditCard,
+  Clock,          // ✅ NAYA (status badge ke liye)
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';   // ✅ NAYA
 import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision';
 import { StudentIDCardModal, StudentIDCardData } from '../components/Studentidcardmodal';
 
@@ -792,6 +794,7 @@ function formatCourseName(raw: string): string {
 
 export const ProfilePage: React.FC = () => {
   const { user, role, activeStudentId } = useUser();
+  const navigate = useNavigate();   // ✅ NAYA
 
   const isGuardian = role === 'guardian';
 
@@ -810,12 +813,79 @@ export const ProfilePage: React.FC = () => {
 
   const [showIdCard, setShowIdCard] = useState(false);
 
-  const idCardData: StudentIDCardData | null = (displayProfile && studentId) ? {
+  // ✅ APPROVED ID Card Request wali photo
+  const [idCardPhoto, setIdCardPhoto] = useState<string | undefined>(undefined);
+  const [checkingApproval, setCheckingApproval] = useState(true);
+  // ✅ NAYA: Latest request status
+  const [latestRequestStatus, setLatestRequestStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!studentId) {
+      setIdCardPhoto(undefined);
+      setLatestRequestStatus(null);
+      setCheckingApproval(false);
+      return;
+    }
+    let cancelled = false;
+    setCheckingApproval(true);
+
+    (async () => {
+      try {
+        // ✅ Parallel: Approved photo + Latest request status
+        const [approvedReq, latestReq] = await Promise.all([
+          erpService.getApprovedStudentCardRequest(studentId).catch(() => null),
+          erpService.getActiveStudentCardRequest(studentId).catch(() => null),
+        ]);
+
+        if (cancelled) return;
+
+        setIdCardPhoto(approvedReq?.photo ? resolveImageUrl(approvedReq.photo) : undefined);
+        setLatestRequestStatus(latestReq?.status || null);
+      } catch {
+        if (!cancelled) {
+          setIdCardPhoto(undefined);
+          setLatestRequestStatus(null);
+        }
+      } finally {
+        if (!cancelled) setCheckingApproval(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [studentId]);
+
+  // ✅ Sirf tab idCardData banao jab approved photo mojood ho
+  // ✅ Grade Program Enrollment se utao (priority order)
+const gradeValue = (() => {
+  const firstEnrollment = enrollments[0];
+
+  // 1. Program (best) — e.g. "LB Grade 3", "FB Grade 10"
+  if (firstEnrollment?.program) {
+    return firstEnrollment.program;
+  }
+
+  // 2. Student batch name — e.g. "Grade 3E"
+  if (firstEnrollment?.student_batch_name) {
+    return firstEnrollment.student_batch_name;
+  }
+
+  // 3. Fallback: custom_batch (agar date nahi hai)
+  const customBatch = (displayProfile as any)?.custom_batch;
+  if (customBatch && !/^\d{4}-\d{2}-\d{2}/.test(String(customBatch).trim())) {
+    return customBatch;
+  }
+
+  return undefined;
+})();
+
+// ✅ Sirf tab idCardData banao jab approved photo mojood ho
+const idCardData: StudentIDCardData | null =
+  (displayProfile && studentId && idCardPhoto) ? {
     student_id: studentId,
     student_name: displayProfile.student_name || '',
-    grade: (displayProfile as any)?.custom_batch || enrollments[0]?.program,
+    grade: gradeValue,                          // ✅ Program Enrollment se
     email: displayProfile.student_email_id,
-    image: displayProfile.image,
+    image: idCardPhoto,
   } : null;
 
   const handlePhotoSuccess = useCallback((url: string) => {
@@ -888,7 +958,6 @@ export const ProfilePage: React.FC = () => {
         <div className="px-6 pt-0 pb-6">
           <div className="flex flex-col sm:flex-row sm:items-start gap-4">
 
-            {/* ✅ FIXED: BOTH Student AND Parent can upload */}
             {studentId ? (
               <AvatarUploader
                 currentImage={displayProfile?.image}
@@ -933,7 +1002,9 @@ export const ProfilePage: React.FC = () => {
               </div>
               <div className="flex flex-col items-end gap-2 shrink-0">
                 <AttendanceRing percentage={summary.percentage} />
-                {idCardData && (
+
+                {/* ✅ Approved → Print ID Card */}
+                {!checkingApproval && idCardData && (
                   <button
                     onClick={() => setShowIdCard(true)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-green
@@ -941,6 +1012,42 @@ export const ProfilePage: React.FC = () => {
                   >
                     <CreditCard className="w-3.5 h-3.5" />
                     Print ID Card
+                  </button>
+                )}
+
+                {/* ⏳ Pending → Request Pending */}
+                {!checkingApproval && !idCardData && latestRequestStatus?.toLowerCase() === 'pending' && (
+                  <button
+                    onClick={() => navigate('/student-card-request')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700
+                               bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 transition-colors"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Request Pending
+                  </button>
+                )}
+
+                {/* ❌ Rejected → Request Rejected */}
+                {!checkingApproval && !idCardData && latestRequestStatus?.toLowerCase() === 'rejected' && (
+                  <button
+                    onClick={() => navigate('/student-card-request')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700
+                               bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-colors"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Request Rejected
+                  </button>
+                )}
+
+                {/* ⚪ No request → Request ID Card */}
+                {!checkingApproval && !idCardData && !latestRequestStatus && (
+                  <button
+                    onClick={() => navigate('/student-card-request')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600
+                               bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-colors"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    Request ID Card
                   </button>
                 )}
               </div>
@@ -978,7 +1085,7 @@ export const ProfilePage: React.FC = () => {
           <InfoRow icon={MapPin}   label="Country"         value={displayProfile?.country} />
           <InfoRow icon={Calendar} label="Joining Date"    value={formatDate(displayProfile?.joining_date)} />
           <InfoRow icon={School}   label="Previous School" value={displayProfile?.custom_previous_school_record} />
-          <InfoRow icon={Hash}     label="Serial No."      value={displayProfile?.custom_serial_no} />
+          
         </motion.div>
 
         <motion.div
